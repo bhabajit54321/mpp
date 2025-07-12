@@ -1,15 +1,16 @@
 import 'core/app_export.dart';
+import 'dart:async';
 
 // Enhanced Configuration Management
 class AppConfig {
   static const String supabaseUrl = String.fromEnvironment('SUPABASE_URL');
   static const String supabaseAnonKey = String.fromEnvironment('SUPABASE_ANON_KEY');
   
-  // Timeouts and delays
-  static const Duration initializationTimeout = Duration(seconds: 15);
-  static const Duration navigationDelay = Duration(milliseconds: 100);
-  static const Duration mountDelay = Duration(milliseconds: 500);
-  static const Duration splashMinimumDuration = Duration(seconds: 2);
+  // Timeouts and delays - optimized for BrowserStack
+  static const Duration initializationTimeout = Duration(seconds: 8);
+  static const Duration navigationDelay = Duration(milliseconds: 50);
+  static const Duration mountDelay = Duration(milliseconds: 200);
+  static const Duration splashMinimumDuration = Duration(seconds: 1);
   
   // App metadata
   static const String appName = 'khilonjiya.com';
@@ -307,7 +308,27 @@ void main() async {
     ),
   );
 
+  // Pre-warm services to reduce initialization time
+  await _preWarmServices();
+
   runApp(MyApp());
+}
+
+// Pre-warm critical services to reduce main thread work
+Future<void> _preWarmServices() async {
+  try {
+    // Initialize shared preferences in background
+    SharedPreferences.getInstance();
+    
+    // Pre-load fonts
+    GoogleFonts.pendingFonts([
+      GoogleFonts.getFont('Poppins'),
+    ]);
+    
+    debugPrint('✅ Services pre-warmed');
+  } catch (e) {
+    debugPrint('⚠️ Service pre-warming failed: $e');
+  }
 }
 
 class MyApp extends StatelessWidget {
@@ -383,11 +404,23 @@ class _AppInitializerState extends State<AppInitializer> with WidgetsBindingObse
 
   Future<void> _initializeApp() async {
     try {
-      await _initializationService.initialize();
+      // Use compute to move heavy initialization to background
+      await compute(_initializeServices, null);
       await _handleInitialNavigation();
     } catch (e) {
       debugPrint('❌ App initialization failed: $e');
       // Error state is already handled in the service
+    }
+  }
+
+  // Static method for compute to run in background
+  static Future<void> _initializeServices(void _) async {
+    try {
+      final stateNotifier = AppStateNotifier();
+      final initializationService = AppInitializationService(stateNotifier);
+      await initializationService.initialize();
+    } catch (e) {
+      debugPrint('❌ Background initialization failed: $e');
     }
   }
 
@@ -426,6 +459,15 @@ class _AppInitializerState extends State<AppInitializer> with WidgetsBindingObse
       // Fallback to splash screen on any navigation error
       NavigationService.pushReplacementNamed(AppRoutes.splashScreen);
     }
+    
+    // Fallback timer to ensure app always shows something
+    Timer(const Duration(seconds: 10), () {
+      if (mounted && _stateNotifier.state == AppState.initializing) {
+        debugPrint('⚠️ Initialization timeout, forcing navigation to splash');
+        _stateNotifier.setState(AppState.unauthenticated);
+        NavigationService.pushReplacementNamed(AppRoutes.splashScreen);
+      }
+    });
   }
 
   @override
@@ -493,7 +535,7 @@ class _AppInitializerState extends State<AppInitializer> with WidgetsBindingObse
 
   Widget _buildLoadingScreen() {
     return Scaffold(
-      backgroundColor: AppTheme.lightTheme.scaffoldBackgroundColor,
+      backgroundColor: Colors.white,
       body: SafeArea(
         child: Column(
           children: [
@@ -503,40 +545,35 @@ class _AppInitializerState extends State<AppInitializer> with WidgetsBindingObse
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    // App logo
+                    // Simplified app logo
                     Container(
-                      width: 120,
-                      height: 120,
+                      width: 80,
+                      height: 80,
                       decoration: BoxDecoration(
-                        color: AppTheme.lightTheme.colorScheme.primary,
-                        borderRadius: BorderRadius.circular(30),
-                        boxShadow: [
-                          BoxShadow(
-                            color: AppTheme.lightTheme.colorScheme.primary.withValues(alpha: 0.3 * 255),
-                            blurRadius: 20,
-                            offset: const Offset(0, 10),
-                          ),
-                        ],
+                        color: Colors.blue,
+                        borderRadius: BorderRadius.circular(20),
                       ),
                       child: const Icon(
                         Icons.storefront,
-                        size: 60,
+                        size: 40,
                         color: Colors.white,
                       ),
                     ),
-                    const SizedBox(height: 32),
-                    Text(
-                      AppConfig.appName,
-                      style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                    const SizedBox(height: 24),
+                    const Text(
+                      'khilonjiya.com',
+                      style: TextStyle(
+                        fontSize: 20,
                         fontWeight: FontWeight.bold,
-                        color: AppTheme.lightTheme.colorScheme.primary,
+                        color: Colors.blue,
                       ),
                     ),
                     const SizedBox(height: 8),
-                    Text(
+                    const Text(
                       'আমাৰ সংস্কৃতি, আমাৰ গৌৰৱ',
-                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                        color: Colors.grey[600],
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.grey,
                       ),
                     ),
                   ],
@@ -548,24 +585,24 @@ class _AppInitializerState extends State<AppInitializer> with WidgetsBindingObse
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  SizedBox(
-                    width: 40,
-                    height: 40,
+                  const SizedBox(
+                    width: 30,
+                    height: 30,
                     child: CircularProgressIndicator(
-                      strokeWidth: 3,
-                                              valueColor: AlwaysStoppedAnimation<Color>(
-                          AppTheme.lightTheme.colorScheme.primary,
-                        ),
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.blue),
                     ),
                   ),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 16),
                   Text(
                     _stateNotifier.isRetrying 
                         ? 'Retrying connection...' 
                         : 'Setting up your marketplace experience...',
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: Colors.grey[600],
+                    style: const TextStyle(
+                      fontSize: 14,
+                      color: Colors.grey,
                     ),
+                    textAlign: TextAlign.center,
                   ),
                 ],
               ),

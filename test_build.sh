@@ -1,36 +1,51 @@
 #!/bin/bash
 
-echo "🧪 Testing Flutter Build Process"
-echo "================================"
+# BrowserStack Flutter App Build Script
+# Optimized for white screen issue resolution
 
-# Check if Flutter is available
-if ! command -v flutter &> /dev/null; then
-    echo "❌ Flutter not found in PATH"
-    echo "Please install Flutter or add it to your PATH"
+echo "🚀 Starting BrowserStack-optimized build..."
+
+# Load environment variables
+if [ -f "env.json" ]; then
+    echo "📋 Loading environment variables from env.json..."
+    export SUPABASE_URL=$(cat env.json | jq -r '.SUPABASE_URL')
+    export SUPABASE_ANON_KEY=$(cat env.json | jq -r '.SUPABASE_ANON_KEY')
+else
+    echo "⚠️ env.json not found, using default values"
+    export SUPABASE_URL="https://rsskivonmfqrzxbmxrkl.supabase.co"
+    export SUPABASE_ANON_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJzc2tpdm9ubWZxcnp4Ym14cmtsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTE2NTUxMTgsImV4cCI6MjA2NzIzMTExOH0.uYjeiqI7eNGZqnip4p-20AL6NT9YCos15gWY-lP82As"
+fi
+
+# Clean previous builds
+echo "🧹 Cleaning previous builds..."
+flutter clean
+flutter pub get
+
+# Build for Android with BrowserStack optimizations
+echo "� Building Android APK for BrowserStack..."
+
+flutter build apk \
+    --release \
+    --target-platform android-arm64 \
+    --dart-define=SUPABASE_URL="$SUPABASE_URL" \
+    --dart-define=SUPABASE_ANON_KEY="$SUPABASE_ANON_KEY" \
+    --dart-define=FLUTTER_WEB_USE_SKIA=true \
+    --dart-define=FLUTTER_WEB_USE_SKIA_FOR_TEXT=true \
+    --dart-define=FLUTTER_WEB_USE_SKIA_FOR_IMAGES=true
+
+# Check if build was successful
+if [ $? -eq 0 ]; then
+    echo "✅ Build completed successfully!"
+    echo "📦 APK location: build/app/outputs/flutter-apk/app-release.apk"
+    
+    # Optional: Install on connected device
+    if command -v adb &> /dev/null; then
+        echo "📱 Installing on connected device..."
+        adb install build/app/outputs/flutter-apk/app-release.apk
+    fi
+else
+    echo "❌ Build failed!"
     exit 1
 fi
 
-echo "✅ Flutter found: $(flutter --version | head -1)"
-
-# Clean the project
-echo "🧹 Cleaning project..."
-flutter clean
-
-# Get dependencies
-echo "📦 Getting dependencies..."
-flutter pub get
-
-# Check for any dependency issues
-echo "🔍 Checking dependencies..."
-flutter pub deps
-
-# Try to build (this will fail without Android SDK, but we can check for embedding issues)
-echo "🔨 Attempting build (will fail without Android SDK, but checking for embedding issues)..."
-flutter build apk --debug 2>&1 | head -20
-
-echo ""
-echo "✅ Test completed!"
-echo "If you see any 'v1 embedding' errors above, the fixes didn't work."
-echo "If you see Android SDK errors, that's expected without the SDK installed."
-echo ""
-echo "🚀 Ready to push to Codemagic for actual build!"
+echo "🎉 BrowserStack build script completed!"
